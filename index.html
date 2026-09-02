@@ -236,10 +236,11 @@ var CSS_TEXT = [
 '.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;background:var(--surface);}',
 /* Date + time fields are stacked full-width (not side-by-side) — a native date/time
    input's minimum rendering width on iOS Safari can exceed a half-width column and
-   visually overlap its neighbor, so each gets the full row instead. */
-'.date-group{border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 12px 2px;margin-bottom:15px;background:var(--surface-alt);}',
-'.date-group-label{font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:9px;}',
-'.date-group .field input{background:var(--surface);}',
+   visually overlap its neighbor. A leading calendar/clock icon marks what each field
+   is for, since an empty native date/time input shows no icon of its own on iOS. */
+'.input-icon-wrap{position:relative;}',
+'.input-icon-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-faint);pointer-events:none;}',
+'.field input.icon-input{padding-left:34px;}',
 '.hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}',
 '.pill-select{display:flex;gap:7px;flex-wrap:wrap;}',
 '.pill-opt{border:1.5px solid var(--border);background:var(--surface-alt);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;color:var(--ink-soft);font-weight:500;}',
@@ -335,6 +336,8 @@ var CATEGORY_LABELS = { 'new':'신입', 'exp-intern':'체험형인턴', 'hire-in
 var PRIORITY_LABELS = { 'high':'높음', 'medium':'중간', 'low':'낮음' };
 var LS_FALLBACK_KEY = 'jobcal_state_fallback_v1';
 var LS_PREF_KEY = 'jobcal_prefs_v1';
+var ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+var ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 1.8" stroke-linecap="round"/></svg>';
 
 /* ============ state ============ */
 var state = (window.__APP_STATE__ && window.__APP_STATE__.postings) ? window.__APP_STATE__ : { postings: [] };
@@ -522,11 +525,6 @@ function renderChrome(){
     var c = computeCounts();
     sl.textContent = '총 ' + c.total + '건 · 지원중 ' + c.applying + ' · 지원완료 ' + c.applied;
   }
-  var fb = document.getElementById('filterBtn');
-  if(fb){
-    var n = (filter.applying?1:0)+(filter.applied?1:0);
-    fb.classList.toggle('active', n<2);
-  }
 }
 
 /* ============ render: calendar ============ */
@@ -609,7 +607,7 @@ function renderCalendar(){
     emptyHost.innerHTML = '오른쪽 아래 + 버튼을 눌러 첫 채용공고를 추가해보세요.';
     emptyHost.style.display = '';
   } else if(visiblePostings.length===0 && undated.length===0){
-    emptyHost.innerHTML = '표시할 공고가 없어요. 우측 상단 필터를 확인해보세요.';
+    emptyHost.innerHTML = '표시할 공고가 없어요. 목록 보기의 정렬 버튼에서 필터를 확인해보세요.';
     emptyHost.style.display = '';
   } else {
     emptyHost.style.display = 'none';
@@ -703,7 +701,7 @@ function renderList(){
     emptyHost.textContent = '오른쪽 아래 + 버튼을 눌러 첫 채용공고를 추가해보세요.';
     emptyHost.style.display = '';
   } else if(visible.length===0){
-    emptyHost.textContent = '표시할 공고가 없어요. 우측 상단 필터를 확인해보세요.';
+    emptyHost.textContent = '표시할 공고가 없어요. 목록 보기의 정렬 버튼에서 필터를 확인해보세요.';
     emptyHost.style.display = '';
   } else {
     emptyHost.style.display = 'none';
@@ -724,12 +722,9 @@ function updateViewModeUI(){
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
-  // calendar view gets the plain "필터" control; list view gets "정렬" (sort + filter combined)
-  var filterBtn = document.getElementById('filterBtn');
-  var filterPanel = document.getElementById('filterPanel');
+  // list view's "정렬" control (sort + status filter combined) is the only place
+  // to change the filter — calendar view just reflects whatever it's set to.
   var sortBtn = document.getElementById('sortBtn');
-  var sortPanel = document.getElementById('sortPanel');
-  if(filterBtn) filterBtn.hidden = isList;
   if(sortBtn) sortBtn.hidden = !isList;
   if(sortBtn){
     sortBtn.classList.toggle('active', sortOrder.length>0 || !(filter.applying && filter.applied));
@@ -810,16 +805,10 @@ function openFormModal(existing){
         '<div class="field"><label>분류</label>'+
           '<select id="f_category">'+categoryOpts.join('')+'</select>'+
         '</div>'+
-        '<div class="date-group">'+
-          '<div class="date-group-label">시작</div>'+
-          '<div class="field"><label>날짜</label><input type="date" id="f_start" value="'+esc(p.startDate)+'"></div>'+
-          '<div class="field" style="margin-bottom:0"><label>시간</label><input type="time" id="f_startTime" value="'+esc(p.startTime)+'"></div>'+
-        '</div>'+
-        '<div class="date-group">'+
-          '<div class="date-group-label">마감</div>'+
-          '<div class="field"><label>날짜</label><input type="date" id="f_deadline" value="'+esc(p.deadlineDate)+'"></div>'+
-          '<div class="field" style="margin-bottom:0"><label>시간</label><input type="time" id="f_time" value="'+esc(p.deadlineTime)+'"></div>'+
-        '</div>'+
+        '<div class="field"><label>시작일</label><div class="input-icon-wrap">'+ICON_CALENDAR+'<input type="date" id="f_start" class="icon-input" value="'+esc(p.startDate)+'"></div></div>'+
+        '<div class="field"><label>시작 시간</label><div class="input-icon-wrap">'+ICON_CLOCK+'<input type="time" id="f_startTime" class="icon-input" value="'+esc(p.startTime)+'"></div></div>'+
+        '<div class="field"><label>마감일</label><div class="input-icon-wrap">'+ICON_CALENDAR+'<input type="date" id="f_deadline" class="icon-input" value="'+esc(p.deadlineDate)+'"></div></div>'+
+        '<div class="field"><label>마감 시간</label><div class="input-icon-wrap">'+ICON_CLOCK+'<input type="time" id="f_time" class="icon-input" value="'+esc(p.deadlineTime)+'"></div></div>'+
         '<div class="hint" style="margin-top:-9px;margin-bottom:15px;">날짜를 입력한 경우에만 시간이 사용돼요.</div>'+
         '<div class="field"><label>공고 링크</label>'+
           '<input type="url" id="f_link" value="'+esc(p.link)+'" placeholder="https://...">'+
@@ -1047,7 +1036,6 @@ function wireGlobalEvents(){
     var viewBtn = e.target.closest('.view-btn');
     if(viewBtn){
       viewMode = viewBtn.getAttribute('data-view');
-      var fp = document.getElementById('filterPanel'); if(fp) fp.hidden = true;
       var sp = document.getElementById('sortPanel'); if(sp) sp.hidden = true;
       savePrefs(); render();
       return;
@@ -1075,30 +1063,8 @@ function wireGlobalEvents(){
     openFormModal(null);
   });
 
-  var filterBtn = document.getElementById('filterBtn');
-  var filterPanel = document.getElementById('filterPanel');
   var sortBtn = document.getElementById('sortBtn');
   var sortPanel = document.getElementById('sortPanel');
-
-  function syncFilterCheckboxes(){
-    [filterPanel, sortPanel].forEach(function(panel){
-      panel.querySelectorAll('input[type=checkbox]').forEach(function(cb){
-        cb.checked = !!filter[cb.value];
-      });
-    });
-  }
-
-  filterBtn.addEventListener('click', function(e){
-    e.stopPropagation();
-    filterPanel.hidden = !filterPanel.hidden;
-  });
-  filterPanel.querySelectorAll('input[type=checkbox]').forEach(function(cb){
-    cb.addEventListener('change', function(){
-      filter[cb.value] = cb.checked;
-      syncFilterCheckboxes();
-      savePrefs(); render();
-    });
-  });
 
   sortBtn.addEventListener('click', function(e){
     e.stopPropagation();
@@ -1118,21 +1084,17 @@ function wireGlobalEvents(){
   sortPanel.querySelectorAll('input[type=checkbox]').forEach(function(cb){
     cb.addEventListener('change', function(){
       filter[cb.value] = cb.checked;
-      syncFilterCheckboxes();
       savePrefs(); render();
     });
   });
 
   document.addEventListener('click', function(e){
-    if(!filterPanel.hidden && !filterPanel.contains(e.target) && e.target!==filterBtn && !filterBtn.contains(e.target)){
-      filterPanel.hidden = true;
-    }
     if(!sortPanel.hidden && !sortPanel.contains(e.target) && e.target!==sortBtn && !sortBtn.contains(e.target)){
       sortPanel.hidden = true;
     }
   });
   document.addEventListener('keydown', function(e){
-    if(e.key==='Escape'){ filterPanel.hidden = true; sortPanel.hidden = true; closeModal(); }
+    if(e.key==='Escape'){ sortPanel.hidden = true; closeModal(); }
   });
 }
 
@@ -1149,14 +1111,6 @@ function buildShell(){
         '<div class="view-toggle" role="group" aria-label="보기 전환">'+
           '<button type="button" class="view-btn" data-view="list" aria-label="목록형 보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>'+
           '<button type="button" class="view-btn" data-view="calendar" aria-label="캘린더형 보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>'+
-        '</div>'+
-        '<button id="filterBtn" class="icon-btn" aria-haspopup="true" aria-expanded="false">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>필터'+
-        '</button>'+
-        '<div id="filterPanel" class="popover" hidden>'+
-          '<div class="popover-title">상태 필터</div>'+
-          '<label class="check-row"><input type="checkbox" value="applying" '+(filter.applying?'checked':'')+'>지원중</label>'+
-          '<label class="check-row"><input type="checkbox" value="applied" '+(filter.applied?'checked':'')+'>지원완료</label>'+
         '</div>'+
         '<button id="sortBtn" class="icon-btn" aria-haspopup="true" aria-expanded="false" hidden>'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M4 12h7M4 17h4M17 5v14M17 5l-3.5 3.5M17 5l3.5 3.5"/></svg>정렬'+
