@@ -238,9 +238,15 @@ var CSS_TEXT = [
    input's minimum rendering width on iOS Safari can exceed a half-width column and
    visually overlap its neighbor. A leading calendar/clock icon marks what each field
    is for, since an empty native date/time input shows no icon of its own on iOS. */
-'.input-icon-wrap{position:relative;}',
-'.input-icon-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-faint);pointer-events:none;}',
-'.field input.icon-input{padding-left:34px;}',
+'.input-icon-wrap{position:relative;flex:none;}',
+'.input-icon-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-faint);pointer-events:none;}',
+'.field input.icon-input{padding-left:32px;padding-right:8px;font-family:"IBM Plex Mono",ui-monospace,monospace;}',
+/* Sized to hold exactly a date ("0000.00.00.") or time ("00:00") value and nothing
+   more — a narrow, content-sized field (rather than width:100%) is what actually
+   keeps the two from overlapping on iOS Safari, regardless of container width. */
+'.dt-row{display:flex;align-items:center;gap:10px;}',
+'.dt-row .dt-date input{width:calc(11ch + 32px);}',
+'.dt-row .dt-time input{width:calc(5ch + 32px);}',
 '.hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}',
 '.pill-select{display:flex;gap:7px;flex-wrap:wrap;}',
 '.pill-opt{border:1.5px solid var(--border);background:var(--surface-alt);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;color:var(--ink-soft);font-weight:500;}',
@@ -805,17 +811,21 @@ function openFormModal(existing){
         '<div class="field"><label>분류</label>'+
           '<select id="f_category">'+categoryOpts.join('')+'</select>'+
         '</div>'+
-        '<div class="field"><label>시작일</label><div class="input-icon-wrap">'+ICON_CALENDAR+'<input type="date" id="f_start" class="icon-input" value="'+esc(p.startDate)+'"></div></div>'+
-        '<div class="field"><label>시작 시간</label><div class="input-icon-wrap">'+ICON_CLOCK+'<input type="time" id="f_startTime" class="icon-input" value="'+esc(p.startTime)+'"></div></div>'+
-        '<div class="field"><label>마감일</label><div class="input-icon-wrap">'+ICON_CALENDAR+'<input type="date" id="f_deadline" class="icon-input" value="'+esc(p.deadlineDate)+'"></div></div>'+
-        '<div class="field"><label>마감 시간</label><div class="input-icon-wrap">'+ICON_CLOCK+'<input type="time" id="f_time" class="icon-input" value="'+esc(p.deadlineTime)+'"></div></div>'+
+        '<div class="field"><label>시작</label><div class="dt-row">'+
+          '<div class="input-icon-wrap dt-date">'+ICON_CALENDAR+'<input type="date" id="f_start" class="icon-input" value="'+esc(p.startDate)+'"></div>'+
+          '<div class="input-icon-wrap dt-time">'+ICON_CLOCK+'<input type="time" id="f_startTime" class="icon-input" value="'+esc(p.startTime)+'"></div>'+
+        '</div></div>'+
+        '<div class="field"><label>마감</label><div class="dt-row">'+
+          '<div class="input-icon-wrap dt-date">'+ICON_CALENDAR+'<input type="date" id="f_deadline" class="icon-input" value="'+esc(p.deadlineDate)+'"></div>'+
+          '<div class="input-icon-wrap dt-time">'+ICON_CLOCK+'<input type="time" id="f_time" class="icon-input" value="'+esc(p.deadlineTime)+'"></div>'+
+        '</div></div>'+
         '<div class="hint" style="margin-top:-9px;margin-bottom:15px;">날짜를 입력한 경우에만 시간이 사용돼요.</div>'+
         '<div class="field"><label>공고 링크</label>'+
           '<input type="url" id="f_link" value="'+esc(p.link)+'" placeholder="https://...">'+
         '</div>'+
         '<div class="field"><label>우선순위</label><div class="pill-select" id="f_priority_group">'+priorityOpts+'</div></div>'+
         '<div class="field"><label>메모</label>'+
-          '<textarea id="f_memo" rows="3" placeholder="나만 보는 개인 메모">'+esc(p.memo)+'</textarea>'+
+          '<textarea id="f_memo" rows="3" placeholder="예: 근무지, 특이사항 등">'+esc(p.memo)+'</textarea>'+
         '</div>'+
         '<div class="form-actions">'+
           '<button type="button" class="btn btn-ghost" data-close>취소</button>'+
