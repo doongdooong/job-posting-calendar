@@ -139,10 +139,12 @@ var CSS_TEXT = [
 '.row-main{flex:1;min-width:0;}',
 '.row-title-line{display:flex;align-items:center;gap:7px;}',
 '.row-company{font-size:14.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-'.pri-dot{width:0.62em;height:0.62em;border-radius:50%;flex:none;background:var(--pri-none-ink);}',
-'.pri-dot.pri-high{background:var(--pri-high-ink);}',
-'.pri-dot.pri-medium{background:var(--pri-med-ink);}',
-'.pri-dot.pri-low{background:var(--pri-low-ink);}',
+/* Same fill colors as the calendar bars (--pri-*-bg), not the darker "-ink" text
+   colors — a thin matching-hue ring keeps the pale fill visible against white. */
+'.pri-dot{width:0.72em;height:0.72em;border-radius:50%;flex:none;background:var(--pri-none-bg);border:1.5px solid var(--pri-none-ink);}',
+'.pri-dot.pri-high{background:var(--pri-high-bg);border-color:var(--pri-high-ink);}',
+'.pri-dot.pri-medium{background:var(--pri-med-bg);border-color:var(--pri-med-ink);}',
+'.pri-dot.pri-low{background:var(--pri-low-bg);border-color:var(--pri-low-ink);}',
 '.row-sub-line{font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
 '.row-date-line{font-size:11.5px;color:var(--ink-faint);margin-top:3px;}',
 '.switch.sm{width:38px;height:22px;flex:none;}',
@@ -157,11 +159,14 @@ var CSS_TEXT = [
 '.weekday-row span:first-child{color:var(--danger);}',
 '.weekday-row span:last-child{color:var(--accent);}',
 '.weeks{border-top:1px solid var(--border);border-left:1px solid var(--border);}',
-'.week-row{position:relative;display:grid;grid-template-columns:repeat(7,1fr);}',
-'.day-cell{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 3px 0;min-width:0;background:var(--surface);}',
+/* Every week row is a FIXED height regardless of how many postings fall in it — a
+   busy week shows an overflow chip instead of growing taller, so the grid stays
+   visually stable as you page through months. Keep in sync with CAL_* JS constants. */
+'.week-row{position:relative;display:grid;grid-template-columns:repeat(7,1fr);height:89px;}',
+'.day-cell{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 2px 0;min-width:0;background:var(--surface);}',
 '.day-cell.out{background:var(--surface-alt);}',
-'.day-num-row{display:flex;justify-content:flex-start;padding:0 2px 4px;}',
-'.day-num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;font-weight:500;color:var(--ink-soft);width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:999px;}',
+'.day-num-row{display:flex;justify-content:flex-start;padding:0 1px 2px;}',
+'.day-num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;font-weight:500;color:var(--ink-soft);width:18px;height:18px;display:flex;align-items:center;justify-content:center;border-radius:999px;}',
 '.day-cell.out .day-num{color:var(--ink-faint);}',
 '.day-cell.sunday .day-num{color:var(--danger);}',
 '.day-cell.saturday .day-num{color:var(--accent);}',
@@ -169,17 +174,17 @@ var CSS_TEXT = [
 /* events-overlay sits ON TOP of the day cells as its own 7-col grid, so a multi-day
    posting renders as ONE spanning grid item (a genuinely continuous bar) instead of
    per-day pieces stitched together at cell borders. */
-'.events-overlay{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:19px;row-gap:2px;pointer-events:none;}',
-'.bar{height:19px;line-height:19px;font-size:11.5px;font-weight:500;padding:0 7px;margin:0 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:var(--pri-none-bg);color:var(--pri-none-ink);border-radius:0;pointer-events:auto;}',
-'.bar.round-l{border-top-left-radius:5px;border-bottom-left-radius:5px;}',
-'.bar.round-r{border-top-right-radius:5px;border-bottom-right-radius:5px;}',
+'.events-overlay{position:absolute;left:0;right:0;top:20px;bottom:0;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:16px;row-gap:1px;pointer-events:none;}',
+'.bar{height:16px;line-height:16px;font-size:10.5px;font-weight:500;padding:0 4px;margin:0 1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;background:var(--pri-none-bg);color:var(--pri-none-ink);border-radius:0;pointer-events:auto;}',
+'.bar.round-l{border-top-left-radius:4px;border-bottom-left-radius:4px;}',
+'.bar.round-r{border-top-right-radius:4px;border-bottom-right-radius:4px;}',
 '.bar:hover{filter:brightness(0.96);}',
 '.bar.pri-high{background:var(--pri-high-bg);color:var(--pri-high-ink);}',
 '.bar.pri-medium{background:var(--pri-med-bg);color:var(--pri-med-ink);}',
 '.bar.pri-low{background:var(--pri-low-bg);color:var(--pri-low-ink);}',
 '.bar.status-applied{filter:saturate(0.5) brightness(1.03);}',
 ':root[data-theme="dark"] .bar.status-applied,@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .bar.status-applied{filter:saturate(0.6) brightness(0.92);}}',
-'.more-chip{height:19px;line-height:19px;font-size:10.5px;font-weight:600;color:var(--ink-faint);background:transparent;border:none;text-align:left;padding:0 5px;margin:0 2px;cursor:pointer;border-radius:5px;pointer-events:auto;}',
+'.more-chip{height:16px;line-height:16px;font-size:9.5px;font-weight:600;color:var(--ink-faint);background:transparent;border:none;text-align:left;padding:0 4px;margin:0 1px;cursor:pointer;border-radius:4px;pointer-events:auto;}',
 '.more-chip:hover{background:var(--surface-alt);color:var(--accent-ink);}',
 
 /* undated section */
@@ -217,12 +222,17 @@ var CSS_TEXT = [
 '.modal-body{padding:14px 18px 20px;}',
 
 /* form */
-'.field{margin-bottom:15px;}',
+'.field{margin-bottom:15px;min-width:0;}',
 '.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}',
 '.field label .req{color:var(--danger);margin-left:2px;}',
-'.field input[type=text],.field input[type=url],.field input[type=date],.field input[type=time],.field select{width:100%;border:1px solid var(--border);background:var(--surface-alt);border-radius:var(--radius-sm);padding:10px 11px;font-size:14.5px;color:var(--ink);font-family:inherit;}',
-'.field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:1px;background:var(--surface);}',
-'.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}',
+'.field input[type=text],.field input[type=url],.field input[type=date],.field input[type=time],.field select,.field textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border);background:var(--surface-alt);border-radius:var(--radius-sm);padding:10px 11px;font-size:14.5px;color:var(--ink);font-family:inherit;}',
+'.field textarea{resize:vertical;min-height:64px;line-height:1.4;}',
+'.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;background:var(--surface);}',
+/* min-width:0 on the grid items is required — without it a native date/time input's
+   intrinsic width can exceed its 1fr track and the two fields visually overlap
+   (seen on iOS Safari). */
+'.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;}',
+'.row2 .field{min-width:0;}',
 '.hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}',
 '.pill-select{display:flex;gap:7px;flex-wrap:wrap;}',
 '.pill-opt{border:1.5px solid var(--border);background:var(--surface-alt);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;color:var(--ink-soft);font-weight:500;}',
@@ -283,7 +293,7 @@ var CSS_TEXT = [
 ':root[data-theme="dark"] .toast,@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .toast{background:var(--surface-alt);color:var(--ink);border:1px solid var(--border);}}',
 '.toast.show{opacity:1;transform:translateY(0);}',
 
-'@media (max-width:380px){.day-cell{padding:3px 2px 0;}.bar{font-size:10.5px;padding:0 5px;}}'
+'@media (max-width:340px){.bar{font-size:9.5px;padding:0 3px;}}'
 ].join('\n');
 
 /* ============ date helpers ============ */
@@ -439,7 +449,7 @@ function buildMonthMatrix(year, month){ // month 1-12
 }
 
 /* ============ week layout (lane assignment) ============ */
-var MAX_LANES = 4;
+var MAX_LANES = 3; // + 1 reserved overflow slot below, kept in fixed .week-row height
 function computeWeekLayout(weekDates, postings){
   var weekStart = weekDates[0], weekEnd = weekDates[6];
   var segments = [];
@@ -511,7 +521,6 @@ function renderChrome(){
 }
 
 /* ============ render: calendar ============ */
-var CAL_HEADER_H = 28, CAL_LANE_H = 19, CAL_ROW_GAP = 2, CAL_BOTTOM_PAD = 6;
 function renderCalendar(){
   var weeks = buildMonthMatrix(view.year, view.month);
   var visiblePostings = state.postings.filter(isVisible);
@@ -521,12 +530,8 @@ function renderCalendar(){
   weeks.forEach(function(week){
     var weekDates = week.map(function(w){ return w.date; });
     var layout = computeWeekLayout(weekDates, visiblePostings);
-    var anyOverflow = layout.overflowByDay.some(function(arr){ return arr.length>0; });
-    var rowsUsed = layout.laneCountUsed + (anyOverflow ? 1 : 0);
-    var contentH = rowsUsed>0 ? (rowsUsed*CAL_LANE_H + Math.max(0,rowsUsed-1)*CAL_ROW_GAP) : 0;
-    var rowHeight = CAL_HEADER_H + contentH + CAL_BOTTOM_PAD;
 
-    html += '<div class="week-row" style="height:'+rowHeight+'px">';
+    html += '<div class="week-row">';
     for(var c=0;c<7;c++){
       var info = week[c];
       var d = info.date;
@@ -542,7 +547,9 @@ function renderCalendar(){
     }
     // events overlay: one grid item per SEGMENT (spans multiple day-columns as a single
     // continuous bar) rather than one item per day, so multi-day postings render unbroken.
-    html += '<div class="events-overlay" style="top:'+CAL_HEADER_H+'px">';
+    // Row height is fixed (see .week-row), so overflow beyond MAX_LANES always lands in
+    // the reserved slot at grid-row MAX_LANES+1 instead of growing the cell.
+    html += '<div class="events-overlay">';
     layout.segments.forEach(function(seg){
       var p = seg.posting;
       var barClasses = ['bar'];
@@ -557,7 +564,7 @@ function renderCalendar(){
     for(var c2=0;c2<7;c2++){
       if(layout.overflowByDay[c2].length){
         var dStr2 = dateToStr(week[c2].date);
-        html += '<button class="more-chip" style="grid-column:'+(c2+1)+';grid-row:'+(layout.laneCountUsed+1)+'" data-more-date="'+dStr2+'">+'+layout.overflowByDay[c2].length+'건</button>';
+        html += '<button class="more-chip" style="grid-column:'+(c2+1)+';grid-row:'+(MAX_LANES+1)+'" data-more-date="'+dStr2+'">+'+layout.overflowByDay[c2].length+'건</button>';
       }
     }
     html += '</div>';
@@ -608,13 +615,14 @@ function listSortKey(p){
 }
 function formatRowDate(p){
   if(p.startDate && p.deadlineDate){
-    return fmtDateKR(parseYMD(p.startDate)) + ' ~ ' + fmtDateKR(parseYMD(p.deadlineDate)) + (p.deadlineTime ? ' · ' + p.deadlineTime : '');
+    return fmtDateKR(parseYMD(p.startDate)) + (p.startTime ? ' ' + p.startTime : '') +
+      ' ~ ' + fmtDateKR(parseYMD(p.deadlineDate)) + (p.deadlineTime ? ' ' + p.deadlineTime : '');
   }
   if(p.deadlineDate){
     return '마감 · ' + fmtDateKR(parseYMD(p.deadlineDate)) + (p.deadlineTime ? ' ' + p.deadlineTime : '');
   }
   if(p.startDate){
-    return '시작 · ' + fmtDateKR(parseYMD(p.startDate));
+    return '시작 · ' + fmtDateKR(parseYMD(p.startDate)) + (p.startTime ? ' ' + p.startTime : '');
   }
   return '날짜 미정';
 }
@@ -714,7 +722,7 @@ function openModal(innerHTML, opts){
 /* ============ add/edit form ============ */
 function openFormModal(existing){
   var isEdit = !!existing;
-  var p = existing || { id:null, company:'', role:'', category:'', startDate:'', deadlineDate:'', deadlineTime:'', link:'', priority:'', status:'applying' };
+  var p = existing || { id:null, company:'', role:'', category:'', startDate:'', startTime:'', deadlineDate:'', deadlineTime:'', link:'', priority:'', status:'applying', memo:'' };
 
   var categoryOpts = ['<option value=""'+(p.category?'':' selected')+'>선택 안 함</option>'];
   Object.keys(CATEGORY_LABELS).forEach(function(k){
@@ -747,15 +755,20 @@ function openFormModal(existing){
         '</div>'+
         '<div class="row2">'+
           '<div class="field"><label>시작일</label><input type="date" id="f_start" value="'+esc(p.startDate)+'"></div>'+
+          '<div class="field"><label>시작 시간</label><input type="time" id="f_startTime" value="'+esc(p.startTime)+'"></div>'+
+        '</div>'+
+        '<div class="row2">'+
           '<div class="field"><label>마감일</label><input type="date" id="f_deadline" value="'+esc(p.deadlineDate)+'"></div>'+
+          '<div class="field"><label>마감 시간</label><input type="time" id="f_time" value="'+esc(p.deadlineTime)+'"></div>'+
         '</div>'+
-        '<div class="field"><label>마감 시간</label><input type="time" id="f_time" value="'+esc(p.deadlineTime)+'">'+
-          '<div class="hint">마감일을 입력한 경우에만 사용돼요.</div>'+
-        '</div>'+
+        '<div class="hint" style="margin-top:-9px;margin-bottom:15px;">날짜를 입력한 경우에만 시간이 사용돼요.</div>'+
         '<div class="field"><label>공고 링크</label>'+
           '<input type="url" id="f_link" value="'+esc(p.link)+'" placeholder="https://...">'+
         '</div>'+
         '<div class="field"><label>우선순위</label><div class="pill-select" id="f_priority_group">'+priorityOpts+'</div></div>'+
+        '<div class="field"><label>메모</label>'+
+          '<textarea id="f_memo" rows="3" placeholder="나만 보는 개인 메모">'+esc(p.memo)+'</textarea>'+
+        '</div>'+
         '<div class="form-actions">'+
           '<button type="button" class="btn btn-ghost" data-close>취소</button>'+
           '<button type="submit" class="btn btn-primary">'+(isEdit?'저장':'추가')+'</button>'+
@@ -787,10 +800,12 @@ function openFormModal(existing){
         role: ov.querySelector('#f_role').value.trim(),
         category: ov.querySelector('#f_category').value,
         startDate: ov.querySelector('#f_start').value,
+        startTime: ov.querySelector('#f_start').value ? ov.querySelector('#f_startTime').value : '',
         deadlineDate: ov.querySelector('#f_deadline').value,
         deadlineTime: ov.querySelector('#f_deadline').value ? ov.querySelector('#f_time').value : '',
         link: link,
-        priority: selectedPriority
+        priority: selectedPriority,
+        memo: ov.querySelector('#f_memo').value.trim()
       };
       if(isEdit){
         var idx = state.postings.findIndex(function(x){ return x.id===p.id; });
@@ -831,20 +846,23 @@ function openDetailModal(id){
     var periodLabel, periodVal;
     if(p.startDate && p.deadlineDate){
       periodLabel = '기간';
-      periodVal = fmtDateFull(p.startDate) + ' ~ ' + fmtDateFull(p.deadlineDate, p.deadlineTime);
+      periodVal = fmtDateFull(p.startDate, p.startTime) + ' ~ ' + fmtDateFull(p.deadlineDate, p.deadlineTime);
     } else if(p.deadlineDate){
       periodLabel = '마감';
       periodVal = fmtDateFull(p.deadlineDate, p.deadlineTime);
     } else {
       periodLabel = '시작일';
-      periodVal = fmtDateFull(p.startDate);
+      periodVal = fmtDateFull(p.startDate, p.startTime);
     }
     rows += '<div class="detail-row"><div class="k">'+periodLabel+'</div><div class="v mono">'+esc(periodVal)+'</div></div>';
   }
   if(p.link){
     rows += '<div class="detail-row"><div class="k">링크</div><div class="v"><a href="'+esc(p.link)+'" target="_blank" rel="noopener noreferrer">'+esc(p.link)+'</a></div></div>';
   }
-  if(!p.role && !p.startDate && !p.deadlineDate && !p.link){
+  if(p.memo){
+    rows += '<div class="detail-row"><div class="k">메모</div><div class="v" style="white-space:pre-wrap;">'+esc(p.memo)+'</div></div>';
+  }
+  if(!p.role && !p.startDate && !p.deadlineDate && !p.link && !p.memo){
     rows += '<div class="detail-row"><div class="k">정보</div><div class="v" style="color:var(--ink-faint)">추가된 세부 정보가 없어요.</div></div>';
   }
 
