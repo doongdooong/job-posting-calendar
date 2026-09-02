@@ -241,12 +241,14 @@ var CSS_TEXT = [
 '.input-icon-wrap{position:relative;flex:none;}',
 '.input-icon-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-faint);pointer-events:none;}',
 '.field input.icon-input{padding-left:32px;padding-right:8px;font-family:"IBM Plex Mono",ui-monospace,monospace;}',
-/* Sized to hold exactly a date ("0000.00.00.") or time ("00:00") value and nothing
-   more — a narrow, content-sized field (rather than width:100%) is what actually
-   keeps the two from overlapping on iOS Safari, regardless of container width. */
-'.dt-row{display:flex;align-items:center;gap:10px;}',
-'.dt-row .dt-date input{width:calc(11ch + 32px);}',
-'.dt-row .dt-time input{width:calc(5ch + 32px);}',
+/* Sized to hold a date ("0000.00.00.") or time ("00:00") value and nothing more — a
+   narrow, content-sized field (rather than width:100%) is what actually keeps the two
+   from overlapping on iOS Safari, regardless of container width. Fixed px, not ch: the
+   native picker renders its own value text (e.g. Korean "오후 10:13" for time) which
+   ignores our font-family/font-size, so ch against our CSS font under-measured it. */
+'.dt-row{display:flex;align-items:center;gap:10px;row-gap:8px;flex-wrap:wrap;}', // graceful 2nd line on very narrow screens, single line otherwise
+'.dt-row .dt-date input{width:172px;}',
+'.dt-row .dt-time input{width:136px;}',
 '.hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}',
 '.pill-select{display:flex;gap:7px;flex-wrap:wrap;}',
 '.pill-opt{border:1.5px solid var(--border);background:var(--surface-alt);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;color:var(--ink-soft);font-weight:500;}',
