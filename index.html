@@ -154,6 +154,10 @@ var CSS_TEXT = [
 '.switch.sm{width:38px;height:22px;flex:none;}',
 '.switch.sm .knob{width:18px;height:18px;top:2px;left:2px;}',
 '.switch.sm.on .knob{transform:translateX(16px);}',
+'.switch.xs{width:32px;height:19px;flex:none;}',
+'.switch.xs .knob{width:15px;height:15px;top:2px;left:2px;}',
+'.switch.xs.on .knob{transform:translateX(13px);}',
+'.mini-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 6px;font-size:13px;color:var(--ink-soft);}',
 '.list-empty{text-align:center;color:var(--ink-faint);font-size:12.5px;padding:40px 10px;}',
 
 /* calendar */
@@ -353,6 +357,7 @@ var caps = null; // artifact capability namespace
 var canWrite = true;
 var view = { year: (new Date()).getFullYear(), month: (new Date()).getMonth()+1 }; // 1-12
 var filter = { applying: true, applied: true };
+var dateFilter = { includeExpired: true, includeNotStarted: true }; // toggle OFF = hide
 var viewMode = 'calendar'; // 'calendar' | 'list'
 var sortOrder = []; // list view only: ordered subset of ['priority','deadline'] — click order = sort precedence
 var saving = false;
@@ -363,6 +368,7 @@ function loadPrefs(){
     if(raw){
       var p = JSON.parse(raw);
       if(p.filter) filter = p.filter;
+      if(p.dateFilter) dateFilter = Object.assign({includeExpired:true, includeNotStarted:true}, p.dateFilter);
       if(p.view) view = p.view;
       if(p.viewMode==='calendar' || p.viewMode==='list') viewMode = p.viewMode;
       if(Array.isArray(p.sortOrder)) sortOrder = p.sortOrder.filter(function(k){ return k==='priority' || k==='deadline'; });
@@ -370,7 +376,7 @@ function loadPrefs(){
   }catch(e){}
 }
 function savePrefs(){
-  try{ localStorage.setItem(LS_PREF_KEY, JSON.stringify({filter:filter, view:view, viewMode:viewMode, sortOrder:sortOrder})); }catch(e){}
+  try{ localStorage.setItem(LS_PREF_KEY, JSON.stringify({filter:filter, dateFilter:dateFilter, view:view, viewMode:viewMode, sortOrder:sortOrder})); }catch(e){}
 }
 
 /* ============ build full document (for publish) ============ */
@@ -444,8 +450,31 @@ function resolveRange(p){
   if(s && !e) return { start: s, end: s };
   return null;
 }
+/* datetime a posting's deadline/start resolves to, for comparing against "now" —
+   a missing time defaults to end-of-day for a deadline (still counts as "not passed"
+   all day) and start-of-day for a start date (counts as "already started" all day). */
+function combineDateTime(dateStr, timeStr, fallbackTime){
+  if(!dateStr) return null;
+  var d = parseYMD(dateStr);
+  if(!d) return null;
+  var parts = (timeStr || fallbackTime).split(':');
+  d.setHours(parseInt(parts[0],10)||0, parseInt(parts[1],10)||0, 0, 0);
+  return d;
+}
+function isExpired(p, now){
+  var dt = combineDateTime(p.deadlineDate, p.deadlineTime, '23:59');
+  return dt !== null && dt < now;
+}
+function isNotStarted(p, now){
+  var dt = combineDateTime(p.startDate, p.startTime, '00:00');
+  return dt !== null && dt > now;
+}
 function isVisible(p){
-  return !!filter[p.status];
+  if(!filter[p.status]) return false;
+  var now = new Date();
+  if(!dateFilter.includeExpired && isExpired(p, now)) return false;
+  if(!dateFilter.includeNotStarted && isNotStarted(p, now)) return false;
+  return true;
 }
 function priorityClass(p){
   return p.priority ? ('pri-' + p.priority) : '';
@@ -735,7 +764,7 @@ function updateViewModeUI(){
   var sortBtn = document.getElementById('sortBtn');
   if(sortBtn) sortBtn.hidden = !isList;
   if(sortBtn){
-    sortBtn.classList.toggle('active', sortOrder.length>0 || !(filter.applying && filter.applied));
+    sortBtn.classList.toggle('active', sortOrder.length>0 || !(filter.applying && filter.applied) || !(dateFilter.includeExpired && dateFilter.includeNotStarted));
   }
   renderSortPanelState();
 }
@@ -1099,6 +1128,17 @@ function wireGlobalEvents(){
       savePrefs(); render();
     });
   });
+  sortPanel.querySelectorAll('[data-date-filter]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-date-filter');
+      dateFilter[key] = !dateFilter[key];
+      btn.classList.toggle('on', dateFilter[key]);
+      btn.setAttribute('aria-checked', String(dateFilter[key]));
+      savePrefs();
+      updateViewModeUI();
+      render();
+    });
+  });
 
   document.addEventListener('click', function(e){
     if(!sortPanel.hidden && !sortPanel.contains(e.target) && e.target!==sortBtn && !sortBtn.contains(e.target)){
@@ -1134,6 +1174,9 @@ function buildShell(){
           '<div class="popover-title" style="margin-top:10px;">상태 필터</div>'+
           '<label class="check-row"><input type="checkbox" data-sort-filter value="applying" '+(filter.applying?'checked':'')+'>지원중</label>'+
           '<label class="check-row"><input type="checkbox" data-sort-filter value="applied" '+(filter.applied?'checked':'')+'>지원완료</label>'+
+          '<div class="popover-title" style="margin-top:10px;">날짜 필터</div>'+
+          '<div class="mini-toggle-row"><span>마감 지난 공고</span><button type="button" class="switch xs'+(dateFilter.includeExpired?' on':'')+'" data-date-filter="includeExpired" role="switch" aria-checked="'+dateFilter.includeExpired+'"><span class="knob"></span></button></div>'+
+          '<div class="mini-toggle-row"><span>모집 전 공고</span><button type="button" class="switch xs'+(dateFilter.includeNotStarted?' on':'')+'" data-date-filter="includeNotStarted" role="switch" aria-checked="'+dateFilter.includeNotStarted+'"><span class="knob"></span></button></div>'+
         '</div>'+
       '</div>'+
     '</div>'+
