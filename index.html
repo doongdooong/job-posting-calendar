@@ -571,31 +571,46 @@ async function ghInitialSync(){
   render();
 }
 
-/* Manual sync — the ONLY thing that talks to GitHub after the initial connection.
-   Editing (add/edit/delete/toggle) is local-first and instant; this button decides
-   when to actually push those changes up (or, if nothing's pending, pull whatever
-   other devices have saved). Never called automatically (no polling, no background
-   fetch on focus) — that background chatter was the "lag" being reported. */
+/* One push-or-pull attempt (throws on any failure — caller decides what to do). */
+async function ghSyncAttemptOnce(){
+  if(ghDirty){
+    if(!ghSha){
+      // No known version (fresh device, or a cleared/corrupted local sha) — check
+      // once before pushing so we don't blindly attempt a sha-less write against a
+      // file that already exists.
+      try{
+        var pre = await ghFetchFile();
+        if(pre.exists) saveGhSha(pre.sha);
+      }catch(preErr){ /* the push below will surface a clear error if this really fails */ }
+    }
+    var newSha = await ghWriteFile(state, ghSha, '채용공고 데이터 업데이트');
+    saveGhSha(newSha); saveGhDirty(false);
+    showToast('GitHub에 저장했어요.');
+  } else {
+    await ghPull();
+    showToast('최신 데이터를 불러왔어요.');
+  }
+}
+
+/* Manual sync — also what the once-per-launch auto-sync calls. Editing
+   (add/edit/delete/toggle) is local-first and instant; this decides when to actually
+   push those changes up (or, if nothing's pending, pull the current version). A brief
+   network blip is common right at app launch (wifi still reconnecting, cell handoff),
+   so a fetch-level failure (TypeError) gets one silent retry before it's treated as a
+   real error — a bad token or an actual conflict fails immediately either way. */
 async function ghSyncNow(){
   if(!ghToken || ghSyncState === 'syncing') return; // guards against the launch auto-sync and a manual click overlapping
   ghSyncState = 'syncing'; renderChrome();
   try{
-    if(ghDirty){
-      if(!ghSha){
-        // No known version (fresh device, or a cleared/corrupted local sha) — check
-        // once before pushing so we don't blindly attempt a sha-less write against a
-        // file that already exists.
-        try{
-          var pre = await ghFetchFile();
-          if(pre.exists) saveGhSha(pre.sha);
-        }catch(preErr){ /* the push below will surface a clear error if this really fails */ }
+    try{
+      await ghSyncAttemptOnce();
+    }catch(err){
+      if(err instanceof TypeError){
+        await new Promise(function(r){ setTimeout(r, 1500); });
+        await ghSyncAttemptOnce();
+      } else {
+        throw err;
       }
-      var newSha = await ghWriteFile(state, ghSha, '채용공고 데이터 업데이트');
-      saveGhSha(newSha); saveGhDirty(false);
-      showToast('GitHub에 저장했어요.');
-    } else {
-      await ghPull();
-      showToast('최신 데이터를 불러왔어요.');
     }
     ghSyncState = 'idle'; ghSyncError = '';
   }catch(err){
