@@ -372,7 +372,7 @@ function todayStr(){ return dateToStr(new Date()); }
    this page almost indefinitely, so the running build can silently be months old —
    which is invisible and extremely confusing to debug. This string is shown in the
    settings screen and is what the launch-time update check compares against. */
-var APP_VERSION = '2026-09-03.1';
+var APP_VERSION = '2026-09-03.2';
 var CATEGORY_LABELS = { 'new':'신입', 'exp-intern':'체험형인턴', 'hire-intern':'채용연계형인턴', 'contract':'계약직' };
 var PRIORITY_LABELS = { 'high':'높음', 'medium':'중간', 'low':'낮음' };
 var LS_FALLBACK_KEY = 'jobcal_state_fallback_v1';
@@ -454,11 +454,15 @@ function b64DecodeUnicode(str){ return decodeURIComponent(escape(atob(str))); }
 /* Current sha of data.json, or null if the file doesn't exist yet. Throws on any
    other failure (bad token, network, repo doesn't exist, etc). */
 async function ghFetchSha(){
-  // GitHub's API sends Cache-Control headers that would otherwise let the browser
-  // reuse a stale response for repeat requests to this same URL.
-  var res = await fetch(GH_API_URL + '?ref=' + GH_BRANCH, {
+  // Cache busting is done with a throwaway query param, NOT a Cache-Control request
+  // header. GitHub's CORS preflight only allows a fixed set of request headers
+  // (Authorization, Content-Type, If-*, ...) and Cache-Control is not among them —
+  // sending it makes the browser block the whole request, which surfaces as an
+  // indistinguishable-from-offline TypeError. A unique URL sidesteps the HTTP cache
+  // with no CORS implications at all.
+  var res = await fetch(GH_API_URL + '?ref=' + GH_BRANCH + '&_=' + Date.now(), {
     cache: 'no-store',
-    headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken, 'Cache-Control': 'no-cache' }
+    headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken }
   });
   if(res.status === 404) return null;
   if(!res.ok){
