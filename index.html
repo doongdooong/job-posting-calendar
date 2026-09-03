@@ -321,6 +321,7 @@ var CSS_TEXT = [
 '.gh-howto ol{margin:10px 0;padding-left:20px;font-size:12.5px;color:var(--ink-soft);line-height:1.7;}',
 '.gh-howto code{background:var(--surface-alt);padding:1px 5px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;}',
 '.gh-howto .hint{margin-top:8px;}',
+'.gh-version{margin-top:14px;text-align:right;font-size:11px;color:var(--ink-faint);font-family:"IBM Plex Mono",monospace;}',
 
 /* day list popover-modal */
 '.daylist-title{font-size:14px;font-weight:700;margin:0 0 10px;}',
@@ -367,6 +368,11 @@ function fmtDateFull(dStr, tStr){
 function todayStr(){ return dateToStr(new Date()); }
 
 /* ============ constants ============ */
+/* Bumped on every deploy. iOS "Add to Home Screen" apps hold onto a cached copy of
+   this page almost indefinitely, so the running build can silently be months old —
+   which is invisible and extremely confusing to debug. This string is shown in the
+   settings screen and is what the launch-time update check compares against. */
+var APP_VERSION = '2026-09-03.1';
 var CATEGORY_LABELS = { 'new':'신입', 'exp-intern':'체험형인턴', 'hire-intern':'채용연계형인턴', 'contract':'계약직' };
 var PRIORITY_LABELS = { 'high':'높음', 'medium':'중간', 'low':'낮음' };
 var LS_FALLBACK_KEY = 'jobcal_state_fallback_v1';
@@ -1257,6 +1263,7 @@ function openSettingsModal(){
         '</ol>'+
         '<p class="hint">이 토큰은 이 기기의 브라우저에만 저장돼요.</p>'+
       '</details>'+
+      '<div class="gh-version">앱 버전 '+esc(APP_VERSION)+'</div>'+
     '</div>'+
   '</div>';
 
@@ -1499,6 +1506,28 @@ function loadFallbackIfNeeded(){
   }
 }
 
+/* Self-update check. This whole app is one HTML file, so a cached page means a fully
+   stale app — and an iOS home-screen web app can serve one for a very long time
+   without ever revalidating. So at launch, fetch this same URL bypassing the cache,
+   read the APP_VERSION out of the served copy, and reload if the server has something
+   newer. sessionStorage guards against a reload loop if the reload somehow still
+   comes back cached. */
+async function checkForUpdate(){
+  var alreadyReloaded = false;
+  try{ alreadyReloaded = sessionStorage.getItem('jobcal_update_reloaded') === '1'; }catch(e){}
+  if(alreadyReloaded) return;
+  try{
+    var res = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' });
+    if(!res.ok) return;
+    var text = await res.text();
+    var m = text.match(/APP_VERSION\s*=\s*'([^']+)'/);
+    if(m && m[1] && m[1] !== APP_VERSION){
+      try{ sessionStorage.setItem('jobcal_update_reloaded', '1'); }catch(e){}
+      location.reload();
+    }
+  }catch(e){ /* offline or blocked — just keep running the current build */ }
+}
+
 function boot(){
   injectCSS();
   loadPrefs();
@@ -1509,6 +1538,7 @@ function boot(){
   render();
   initCapability().then(function(){
     if(!caps){
+      checkForUpdate(); // statically hosted copy only — the Artifact viewer serves its own
       loadGhToken();
       if(ghToken) ghSyncState = 'idle';
       render();
