@@ -577,7 +577,7 @@ async function ghInitialSync(){
    other devices have saved). Never called automatically (no polling, no background
    fetch on focus) — that background chatter was the "lag" being reported. */
 async function ghSyncNow(){
-  if(!ghToken) return;
+  if(!ghToken || ghSyncState === 'syncing') return; // guards against the launch auto-sync and a manual click overlapping
   ghSyncState = 'syncing'; renderChrome();
   try{
     if(ghDirty){
@@ -1617,11 +1617,13 @@ function boot(){
       loadGhToken();
       loadGhSha();
       loadGhDirty();
-      // No automatic fetch here on purpose — sync only happens from an explicit
-      // action (the sync button in Settings, or connecting for the first time).
-      // This device shows whatever it last saw until asked to check again.
       if(ghToken) ghSyncState = 'idle';
       render();
+      // One automatic sync per app launch (not per edit, not on every tab-focus) —
+      // pushes anything left pending from last time, or pulls the current version so
+      // the app opens showing up-to-date data without having to remember to press the
+      // sync button. Editing mid-session stays purely local/instant either way.
+      if(ghToken) ghSyncNow();
     }
   });
 }
