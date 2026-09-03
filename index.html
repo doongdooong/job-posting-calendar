@@ -374,6 +374,8 @@ var PRIORITY_LABELS = { 'high':'높음', 'medium':'중간', 'low':'낮음' };
 var LS_FALLBACK_KEY = 'jobcal_state_fallback_v1';
 var LS_PREF_KEY = 'jobcal_prefs_v1';
 var LS_GH_TOKEN_KEY = 'jobcal_gh_token_v1';
+var LS_GH_SHA_KEY = 'jobcal_gh_sha_v1';
+var LS_GH_DIRTY_KEY = 'jobcal_gh_dirty_v1';
 var ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 var ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 1.8" stroke-linecap="round"/></svg>';
 
@@ -440,6 +442,35 @@ function saveGhToken(tok){
     else localStorage.removeItem(LS_GH_TOKEN_KEY);
   }catch(e){}
 }
+/* ghSha MUST survive a page reload — it's a plain JS variable otherwise, so a fresh
+   session (sync is manual now, no auto-pull on boot) would start from null and try to
+   PUSH with no sha even though the file already exists remotely, which GitHub rejects
+   ("sha wasn't supplied"). Persisting it means a stale-but-real sha is used instead,
+   which correctly falls into the conflict-recovery path if it turns out out of date. */
+function loadGhSha(){
+  try{ ghSha = localStorage.getItem(LS_GH_SHA_KEY) || null; }catch(e){ ghSha = null; }
+}
+function saveGhSha(sha){
+  ghSha = sha || null;
+  try{
+    if(ghSha) localStorage.setItem(LS_GH_SHA_KEY, ghSha);
+    else localStorage.removeItem(LS_GH_SHA_KEY);
+  }catch(e){}
+}
+/* Also persisted — otherwise closing the tab (or it reloading) right after an edit but
+   before pressing sync forgets that edit is unsynced, and the next pull would silently
+   overwrite it with the remote version. The edit itself is always safe in
+   LS_FALLBACK_KEY regardless; this flag is just "does GitHub know about it yet". */
+function loadGhDirty(){
+  try{ ghDirty = localStorage.getItem(LS_GH_DIRTY_KEY) === '1'; }catch(e){ ghDirty = false; }
+}
+function saveGhDirty(v){
+  ghDirty = !!v;
+  try{
+    if(ghDirty) localStorage.setItem(LS_GH_DIRTY_KEY, '1');
+    else localStorage.removeItem(LS_GH_DIRTY_KEY);
+  }catch(e){}
+}
 function b64EncodeUnicode(str){ return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUnicode(str){ return decodeURIComponent(escape(atob(str))); }
 
@@ -486,6 +517,10 @@ async function ghWriteFile(newState, sha, message){
   if(!res.ok){
     var e = new Error('gh_write_failed'); e.status = res.status;
     try{ var j = await res.json(); e.ghMessage = j.message; }catch(_e){}
+    // A 422 "sha wasn't supplied" means we pushed without knowing the current version
+    // (e.g. a corrupted/cleared local sha) even though the file already exists —
+    // recoverable exactly like a conflict: pull the real sha and let the caller retry.
+    if(res.status === 422 && e.ghMessage && /sha/i.test(e.ghMessage)) e.code = 'conflict';
     throw e;
   }
   var json2 = await res.json();
@@ -501,7 +536,7 @@ async function ghPull(){
       state = file.data;
       try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
     }
-    ghSha = file.sha;
+    saveGhSha(file.sha);
   }
 }
 
@@ -515,17 +550,17 @@ async function ghInitialSync(){
     var file = await ghFetchFile();
     if(file.exists){
       if(file.data && Array.isArray(file.data.postings)) state = file.data;
-      ghSha = file.sha;
+      saveGhSha(file.sha);
     } else if(state.postings && state.postings.length){
       var sha1 = await ghWriteFile(state, null, '기존 로컬 데이터 GitHub로 최초 이전');
-      ghSha = sha1;
+      saveGhSha(sha1);
       showToast('기존에 입력하신 정보를 GitHub에 옮겨 저장했어요.');
     } else {
       var sha2 = await ghWriteFile({ postings: [] }, null, '초기 데이터 파일 생성');
-      ghSha = sha2;
+      saveGhSha(sha2);
     }
     try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
-    ghDirty = false;
+    saveGhDirty(false);
     ghSyncState = 'idle'; ghSyncError = '';
     showToast('GitHub 동기화가 연결됐어요.');
   }catch(err){
@@ -546,8 +581,17 @@ async function ghSyncNow(){
   ghSyncState = 'syncing'; renderChrome();
   try{
     if(ghDirty){
+      if(!ghSha){
+        // No known version (fresh device, or a cleared/corrupted local sha) — check
+        // once before pushing so we don't blindly attempt a sha-less write against a
+        // file that already exists.
+        try{
+          var pre = await ghFetchFile();
+          if(pre.exists) saveGhSha(pre.sha);
+        }catch(preErr){ /* the push below will surface a clear error if this really fails */ }
+      }
       var newSha = await ghWriteFile(state, ghSha, '채용공고 데이터 업데이트');
-      ghSha = newSha; ghDirty = false;
+      saveGhSha(newSha); saveGhDirty(false);
       showToast('GitHub에 저장했어요.');
     } else {
       await ghPull();
@@ -558,7 +602,7 @@ async function ghSyncNow(){
     if(err && err.code === 'conflict'){
       try{
         await ghPull();
-        ghDirty = false;
+        saveGhDirty(false);
         ghSyncState = 'idle'; ghSyncError = '';
         showToast('다른 기기에서 방금 저장한 내용으로 갱신했어요.');
       }catch(err2){
@@ -581,6 +625,7 @@ function describeGhError(err){
   if(err && err.status === 404) return '저장소를 찾을 수 없어요. 이름/권한을 확인해주세요.';
   if(err && err.ghMessage) return err.ghMessage;
   if(err && err.message === 'Failed to fetch') return '인터넷 연결을 확인해주세요.';
+  if(err && err.status) return '알 수 없는 오류 (상태 코드 ' + err.status + ')';
   return '알 수 없는 오류';
 }
 
@@ -605,7 +650,7 @@ async function persist(newState){
     // is connected, just mark the change as pending — the settings-modal sync button
     // is the only thing that actually pushes it.
     try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
-    if(ghToken) ghDirty = true;
+    if(ghToken) saveGhDirty(true);
     render();
   }
 }
@@ -1336,8 +1381,8 @@ function openSettingsModal(){
     if(disconnectBtn){
       disconnectBtn.addEventListener('click', function(){
         saveGhToken(null);
-        ghSha = null;
-        ghDirty = false;
+        saveGhSha(null);
+        saveGhDirty(false);
         ghSyncState = 'no-token';
         ghSyncError = '';
         closeModal();
@@ -1566,6 +1611,8 @@ function boot(){
   initCapability().then(function(){
     if(!caps){
       loadGhToken();
+      loadGhSha();
+      loadGhDirty();
       // No automatic fetch here on purpose — sync only happens from an explicit
       // action (the sync button in Settings, or connecting for the first time).
       // This device shows whatever it last saw until asked to check again.
