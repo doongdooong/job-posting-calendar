@@ -123,7 +123,6 @@ var CSS_TEXT = [
 '.gh-status-btn.gh-idle .gh-dot{background:var(--good);}',
 '.gh-status-btn.gh-syncing .gh-dot{background:var(--accent);}',
 '.gh-status-btn.gh-error .gh-dot{background:var(--danger);}',
-'.gh-status-btn.gh-dirty .gh-dot{background:#d9a441;}',
 '.nav-btn:hover{background:var(--accent-soft);border-color:var(--accent);}',
 '.nav-btn svg{width:16px;height:16px;}',
 '.month-title-wrap{flex:1;text-align:center;min-width:0;padding:0 6px;}',
@@ -315,7 +314,6 @@ var CSS_TEXT = [
 '.gh-status-line.gh-status-idle{color:var(--good);}',
 '.gh-status-line.gh-status-error{color:var(--danger);}',
 '.gh-status-line.gh-status-syncing{color:var(--accent-ink);}',
-'.gh-status-line.gh-status-dirty{color:#d9a441;}',
 '.gh-desc{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:0 0 16px;}',
 '.gh-desc code{background:var(--surface-alt);padding:1px 5px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;}',
 '.gh-howto{margin-top:16px;border-top:1px solid var(--border);padding-top:12px;}',
@@ -374,8 +372,6 @@ var PRIORITY_LABELS = { 'high':'높음', 'medium':'중간', 'low':'낮음' };
 var LS_FALLBACK_KEY = 'jobcal_state_fallback_v1';
 var LS_PREF_KEY = 'jobcal_prefs_v1';
 var LS_GH_TOKEN_KEY = 'jobcal_gh_token_v1';
-var LS_GH_SHA_KEY = 'jobcal_gh_sha_v1';
-var LS_GH_DIRTY_KEY = 'jobcal_gh_dirty_v1';
 var ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 var ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 1.8" stroke-linecap="round"/></svg>';
 
@@ -400,10 +396,8 @@ var viewMode = 'calendar'; // 'calendar' | 'list'
 var sortOrder = []; // list view only: ordered subset of ['priority','deadline'] — click order = sort precedence
 var saving = false;
 var ghToken = null;         // Personal Access Token, this device only (localStorage)
-var ghSha = null;           // last-known data.json blob sha, for optimistic-concurrency writes
 var ghSyncState = 'no-token'; // 'no-token' | 'syncing' | 'idle' | 'error'
 var ghSyncError = '';
-var ghDirty = false;        // edits made locally since the last successful push — sync is manual-only
 
 function loadPrefs(){
   try{
@@ -431,6 +425,12 @@ function buildFullHTML(newState){
 }
 
 /* ============ GitHub sync (data.json in a private companion repo) ============ */
+/* Deliberately simple, single-device model: this device's local copy is always the
+   truth. There is no version tracking, no pull, no conflict handling — every sync
+   (the once-per-launch auto-sync, and the manual button) does the exact same thing:
+   look up whatever sha the file currently has (if it exists at all) and overwrite it
+   with what's here right now. Nothing reads FROM GitHub except that one sha lookup
+   immediately before writing. */
 function loadGhToken(){
   try{ ghToken = localStorage.getItem(LS_GH_TOKEN_KEY) || null; }catch(e){ ghToken = null; }
   ghSyncState = ghToken ? 'syncing' : 'no-token';
@@ -442,68 +442,32 @@ function saveGhToken(tok){
     else localStorage.removeItem(LS_GH_TOKEN_KEY);
   }catch(e){}
 }
-/* ghSha MUST survive a page reload — it's a plain JS variable otherwise, so a fresh
-   session (sync is manual now, no auto-pull on boot) would start from null and try to
-   PUSH with no sha even though the file already exists remotely, which GitHub rejects
-   ("sha wasn't supplied"). Persisting it means a stale-but-real sha is used instead,
-   which correctly falls into the conflict-recovery path if it turns out out of date. */
-function loadGhSha(){
-  try{ ghSha = localStorage.getItem(LS_GH_SHA_KEY) || null; }catch(e){ ghSha = null; }
-}
-function saveGhSha(sha){
-  ghSha = sha || null;
-  try{
-    if(ghSha) localStorage.setItem(LS_GH_SHA_KEY, ghSha);
-    else localStorage.removeItem(LS_GH_SHA_KEY);
-  }catch(e){}
-}
-/* Also persisted — otherwise closing the tab (or it reloading) right after an edit but
-   before pressing sync forgets that edit is unsynced, and the next pull would silently
-   overwrite it with the remote version. The edit itself is always safe in
-   LS_FALLBACK_KEY regardless; this flag is just "does GitHub know about it yet". */
-function loadGhDirty(){
-  try{ ghDirty = localStorage.getItem(LS_GH_DIRTY_KEY) === '1'; }catch(e){ ghDirty = false; }
-}
-function saveGhDirty(v){
-  ghDirty = !!v;
-  try{
-    if(ghDirty) localStorage.setItem(LS_GH_DIRTY_KEY, '1');
-    else localStorage.removeItem(LS_GH_DIRTY_KEY);
-  }catch(e){}
-}
 function b64EncodeUnicode(str){ return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUnicode(str){ return decodeURIComponent(escape(atob(str))); }
 
-/* GET the data file. Returns {exists:false} on 404 (repo has no data.json yet —
-   normal on first-ever connection). Throws on any other failure (bad token, network,
-   repo doesn't exist, etc). */
-async function ghFetchFile(){
-  // GitHub's API sends Cache-Control headers that let the browser reuse a stale
-  // response for repeat requests to this same URL — exactly the case here, since the
-  // URL never changes. cache:'no-store' (+ an explicit no-cache request header, for
-  // browsers that still try to revalidate against a cached copy) forces a real network
-  // round-trip every time, so a pull always sees what another device just pushed.
+/* Current sha of data.json, or null if the file doesn't exist yet. Throws on any
+   other failure (bad token, network, repo doesn't exist, etc). */
+async function ghFetchSha(){
+  // GitHub's API sends Cache-Control headers that would otherwise let the browser
+  // reuse a stale response for repeat requests to this same URL.
   var res = await fetch(GH_API_URL + '?ref=' + GH_BRANCH, {
     cache: 'no-store',
     headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken, 'Cache-Control': 'no-cache' }
   });
-  if(res.status === 404) return { exists: false };
+  if(res.status === 404) return null;
   if(!res.ok){
     var e = new Error('gh_fetch_failed'); e.status = res.status;
     try{ var j = await res.json(); e.ghMessage = j.message; }catch(_e){}
     throw e;
   }
   var json = await res.json();
-  var parsed;
-  try{ parsed = JSON.parse(b64DecodeUnicode(json.content.replace(/\n/g,''))); }
-  catch(parseErr){ var e2 = new Error('gh_parse_failed'); throw e2; }
-  return { exists: true, data: parsed, sha: json.sha };
+  return json.sha;
 }
 
 /* PUT (create or update) the data file. Pass sha=null to create a brand-new file. */
 async function ghWriteFile(newState, sha, message){
   var body = {
-    message: message || '채용공고 데이터 업데이트',
+    message: message || '채용공고 데이터 백업',
     content: b64EncodeUnicode(JSON.stringify(newState, null, 2)),
     branch: GH_BRANCH
   };
@@ -513,123 +477,45 @@ async function ghWriteFile(newState, sha, message){
     headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if(res.status === 409){ var ce = new Error('gh_conflict'); ce.code = 'conflict'; throw ce; }
   if(!res.ok){
     var e = new Error('gh_write_failed'); e.status = res.status;
     try{ var j = await res.json(); e.ghMessage = j.message; }catch(_e){}
-    // A 422 "sha wasn't supplied" means we pushed without knowing the current version
-    // (e.g. a corrupted/cleared local sha) even though the file already exists —
-    // recoverable exactly like a conflict: pull the real sha and let the caller retry.
-    if(res.status === 422 && e.ghMessage && /sha/i.test(e.ghMessage)) e.code = 'conflict';
     throw e;
   }
-  var json2 = await res.json();
-  return json2.content.sha;
 }
 
-/* Pull the latest data.json and adopt it as current state (internal helper — caller
-   controls ghSyncState/render around it). */
-async function ghPull(){
-  var file = await ghFetchFile();
-  if(file.exists){
-    if(file.data && Array.isArray(file.data.postings)){
-      state = file.data;
-      try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
-    }
-    saveGhSha(file.sha);
-  }
+/* One overwrite attempt: look up the current sha (if the file exists), then push this
+   device's data on top of it unconditionally. No comparison, no merge. */
+async function ghCommitOnce(){
+  var sha = await ghFetchSha();
+  await ghWriteFile(state, sha, '채용공고 데이터 백업');
 }
 
-/* First-time connection: pull, or if the private repo has no data.json yet, seed it
-   from whatever's already on this device (the migration path for existing phone data).
-   Only ever called from an explicit user action (submitting the token form, or the
-   retry button) — never automatically. */
-async function ghInitialSync(){
-  ghSyncState = 'syncing'; renderChrome();
-  try{
-    var file = await ghFetchFile();
-    if(file.exists){
-      if(file.data && Array.isArray(file.data.postings)) state = file.data;
-      saveGhSha(file.sha);
-    } else if(state.postings && state.postings.length){
-      var sha1 = await ghWriteFile(state, null, '기존 로컬 데이터 GitHub로 최초 이전');
-      saveGhSha(sha1);
-      showToast('기존에 입력하신 정보를 GitHub에 옮겨 저장했어요.');
-    } else {
-      var sha2 = await ghWriteFile({ postings: [] }, null, '초기 데이터 파일 생성');
-      saveGhSha(sha2);
-    }
-    try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
-    saveGhDirty(false);
-    ghSyncState = 'idle'; ghSyncError = '';
-    showToast('GitHub 동기화가 연결됐어요.');
-  }catch(err){
-    ghSyncState = 'error';
-    ghSyncError = describeGhError(err);
-    showToast('GitHub 연결 실패: ' + ghSyncError);
-  }
-  render();
-}
-
-/* One push-or-pull attempt (throws on any failure — caller decides what to do). */
-async function ghSyncAttemptOnce(){
-  if(ghDirty){
-    if(!ghSha){
-      // No known version (fresh device, or a cleared/corrupted local sha) — check
-      // once before pushing so we don't blindly attempt a sha-less write against a
-      // file that already exists.
-      try{
-        var pre = await ghFetchFile();
-        if(pre.exists) saveGhSha(pre.sha);
-      }catch(preErr){ /* the push below will surface a clear error if this really fails */ }
-    }
-    var newSha = await ghWriteFile(state, ghSha, '채용공고 데이터 업데이트');
-    saveGhSha(newSha); saveGhDirty(false);
-    showToast('GitHub에 저장했어요.');
-  } else {
-    await ghPull();
-    showToast('최신 데이터를 불러왔어요.');
-  }
-}
-
-/* Manual sync — also what the once-per-launch auto-sync calls. Editing
-   (add/edit/delete/toggle) is local-first and instant; this decides when to actually
-   push those changes up (or, if nothing's pending, pull the current version). A brief
-   network blip is common right at app launch (wifi still reconnecting, cell handoff),
-   so a fetch-level failure (TypeError) gets one silent retry before it's treated as a
-   real error — a bad token or an actual conflict fails immediately either way. */
+/* The only thing that talks to GitHub — called once automatically at launch, and
+   again whenever the sync button is pressed. Editing (add/edit/delete/toggle) never
+   touches the network; it's purely local and instant. A brief network blip is common
+   right at app launch (wifi still reconnecting, cell handoff), so a fetch-level
+   failure (TypeError) gets one silent retry before it's treated as a real error. */
 async function ghSyncNow(){
-  if(!ghToken || ghSyncState === 'syncing') return; // guards against the launch auto-sync and a manual click overlapping
+  if(!ghToken || ghSyncState === 'syncing') return; // guards against launch auto-sync and a manual click overlapping
   ghSyncState = 'syncing'; renderChrome();
   try{
     try{
-      await ghSyncAttemptOnce();
+      await ghCommitOnce();
     }catch(err){
       if(err instanceof TypeError){
         await new Promise(function(r){ setTimeout(r, 1500); });
-        await ghSyncAttemptOnce();
+        await ghCommitOnce();
       } else {
         throw err;
       }
     }
     ghSyncState = 'idle'; ghSyncError = '';
+    showToast('GitHub에 백업했어요.');
   }catch(err){
-    if(err && err.code === 'conflict'){
-      try{
-        await ghPull();
-        saveGhDirty(false);
-        ghSyncState = 'idle'; ghSyncError = '';
-        showToast('다른 기기에서 방금 저장한 내용으로 갱신했어요.');
-      }catch(err2){
-        ghSyncState = 'error';
-        ghSyncError = describeGhError(err2);
-        showToast('동기화 실패: ' + ghSyncError);
-      }
-    } else {
-      ghSyncState = 'error';
-      ghSyncError = describeGhError(err);
-      showToast('동기화 실패: ' + ghSyncError);
-    }
+    ghSyncState = 'error';
+    ghSyncError = describeGhError(err);
+    showToast('GitHub 백업 실패: ' + ghSyncError);
   }
   render();
 }
@@ -665,11 +551,10 @@ async function persist(newState){
       render();
     }
   } else {
-    // Local-first: every edit lands instantly, no network round-trip. If GitHub sync
-    // is connected, just mark the change as pending — the settings-modal sync button
-    // is the only thing that actually pushes it.
+    // Editing never touches the network — GitHub only gets written to by the launch
+    // auto-sync or the manual sync button (see ghSyncNow), both of which back up
+    // whatever's here at that moment.
     try{ localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(state)); }catch(e){}
-    if(ghToken) saveGhDirty(true);
     render();
   }
 }
@@ -830,15 +715,14 @@ function renderChrome(){
   var settingsBtn = document.getElementById('settingsBtn');
   if(settingsBtn){
     settingsBtn.hidden = !!caps; // Artifact has its own built-in sync — no GitHub setup needed there
-    var statusClass = (ghSyncState==='idle' && ghDirty) ? 'dirty' : ghSyncState;
-    settingsBtn.classList.remove('gh-idle','gh-syncing','gh-error','gh-no-token','gh-dirty');
-    settingsBtn.classList.add('gh-' + statusClass);
+    settingsBtn.classList.remove('gh-idle','gh-syncing','gh-error','gh-no-token');
+    settingsBtn.classList.add('gh-' + ghSyncState);
     settingsBtn.setAttribute('aria-label', 'GitHub 동기화 설정 (' + ghSyncStatusLabel() + ')');
   }
 }
 function ghSyncStatusLabel(){
-  if(ghSyncState==='idle') return ghDirty ? '저장 대기 중' : '연결됨';
-  if(ghSyncState==='syncing') return '동기화 중';
+  if(ghSyncState==='idle') return '백업됨';
+  if(ghSyncState==='syncing') return '백업 중';
   if(ghSyncState==='error') return '오류: ' + ghSyncError;
   return '연결 안 됨';
 }
@@ -1333,11 +1217,9 @@ function openSettingsModal(){
   var connected = !!ghToken;
   var statusHtml;
   if(ghSyncState==='syncing'){
-    statusHtml = '<div class="gh-status-line gh-status-syncing">동기화 중…</div>';
-  } else if(ghSyncState==='idle' && ghDirty){
-    statusHtml = '<div class="gh-status-line gh-status-dirty">● 저장하지 않은 변경사항이 있어요 — 제목 옆 🔄를 눌러 GitHub에 저장하세요.</div>';
+    statusHtml = '<div class="gh-status-line gh-status-syncing">백업 중…</div>';
   } else if(ghSyncState==='idle'){
-    statusHtml = '<div class="gh-status-line gh-status-idle">✓ 연결됨 — 총 '+state.postings.length+'건 동기화됨</div>';
+    statusHtml = '<div class="gh-status-line gh-status-idle">✓ 백업됨 — 총 '+state.postings.length+'건</div>';
   } else if(ghSyncState==='error'){
     statusHtml = '<div class="gh-status-line gh-status-error">⚠ 오류: '+esc(ghSyncError)+'</div>'+
       '<button type="button" class="btn btn-ghost" id="ghRetryBtn" style="margin-bottom:14px;">다시 시도</button>';
@@ -1347,14 +1229,14 @@ function openSettingsModal(){
 
   var html =
   '<div class="modal" role="dialog" aria-modal="true">'+
-    '<div class="modal-head"><div class="modal-head-title"><h2>GitHub 동기화 설정</h2>'+
-      (connected ? '<button type="button" id="ghSyncNowBtn" class="gh-inline-sync" aria-label="지금 동기화" title="지금 동기화"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h5"/><path d="M20 20v-5h-5"/><path d="M5.5 15a7 7 0 0012.6 2.5M18.5 9A7 7 0 005.9 6.5"/></svg></button>' : '')+
+    '<div class="modal-head"><div class="modal-head-title"><h2>GitHub 백업 설정</h2>'+
+      (connected ? '<button type="button" id="ghSyncNowBtn" class="gh-inline-sync" aria-label="지금 백업" title="지금 백업"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h5"/><path d="M20 20v-5h-5"/><path d="M5.5 15a7 7 0 0012.6 2.5M18.5 9A7 7 0 005.9 6.5"/></svg></button>' : '')+
       '</div>'+
       '<button class="modal-close" data-close aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'+
     '</div>'+
     '<div class="modal-body">'+
       statusHtml+
-      '<p class="gh-desc">데이터는 <code>'+esc(GH_OWNER)+'/'+esc(GH_REPO)+'</code>(Private) 저장소의 <code>'+esc(GH_PATH)+'</code>에 저장돼요. 이 저장소 하나에만 쓸 수 있게 권한을 제한한 토큰을 각 기기에 한 번씩 넣어주면, 기기끼리 자동으로 동기화돼요.</p>'+
+      '<p class="gh-desc">이 기기의 데이터를 <code>'+esc(GH_OWNER)+'/'+esc(GH_REPO)+'</code>(Private) 저장소의 <code>'+esc(GH_PATH)+'</code>에 그대로 덮어써서 백업해요. 앱을 열 때 자동으로 한 번, 그리고 위 🔄 버튼을 누를 때마다 백업돼요 — 다른 기기의 내용을 불러오는 기능은 없고, 이 기기 → GitHub 방향으로만 저장돼요.</p>'+
       '<form id="ghTokenForm">'+
         '<div class="field"><label>GitHub Personal Access Token</label>'+
           '<input type="password" id="ghTokenInput" placeholder="github_pat_..." autocomplete="off" value="">'+
@@ -1373,7 +1255,7 @@ function openSettingsModal(){
           '<li>Permissions → Repository permissions → <b>Contents</b> → Read and write</li>'+
           '<li>Generate token → 복사해서 위 입력칸에 붙여넣기</li>'+
         '</ol>'+
-        '<p class="hint">이 토큰은 이 기기의 브라우저에만 저장돼요. 다른 기기에서 쓰려면 각자 따로 만들어서 넣어야 해요.</p>'+
+        '<p class="hint">이 토큰은 이 기기의 브라우저에만 저장돼요.</p>'+
       '</details>'+
     '</div>'+
   '</div>';
@@ -1392,7 +1274,7 @@ function openSettingsModal(){
     if(retryBtn){
       retryBtn.addEventListener('click', async function(){
         retryBtn.disabled = true;
-        await (ghSha ? ghSyncNow() : ghInitialSync());
+        await ghSyncNow();
         openSettingsModal();
       });
     }
@@ -1400,8 +1282,6 @@ function openSettingsModal(){
     if(disconnectBtn){
       disconnectBtn.addEventListener('click', function(){
         saveGhToken(null);
-        saveGhSha(null);
-        saveGhDirty(false);
         ghSyncState = 'no-token';
         ghSyncError = '';
         closeModal();
@@ -1415,7 +1295,7 @@ function openSettingsModal(){
       if(!tok) return;
       saveGhToken(tok);
       closeModal();
-      await ghInitialSync();
+      await ghSyncNow();
       openSettingsModal();
     });
   }});
@@ -1630,14 +1510,11 @@ function boot(){
   initCapability().then(function(){
     if(!caps){
       loadGhToken();
-      loadGhSha();
-      loadGhDirty();
       if(ghToken) ghSyncState = 'idle';
       render();
-      // One automatic sync per app launch (not per edit, not on every tab-focus) —
-      // pushes anything left pending from last time, or pulls the current version so
-      // the app opens showing up-to-date data without having to remember to press the
-      // sync button. Editing mid-session stays purely local/instant either way.
+      // One automatic backup per app launch (not per edit, not on every tab-focus) —
+      // unconditionally overwrites GitHub with whatever's on this device right now.
+      // Editing mid-session stays purely local/instant either way.
       if(ghToken) ghSyncNow();
     }
   });
