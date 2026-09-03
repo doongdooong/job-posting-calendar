@@ -447,8 +447,14 @@ function b64DecodeUnicode(str){ return decodeURIComponent(escape(atob(str))); }
    normal on first-ever connection). Throws on any other failure (bad token, network,
    repo doesn't exist, etc). */
 async function ghFetchFile(){
+  // GitHub's API sends Cache-Control headers that let the browser reuse a stale
+  // response for repeat requests to this same URL — exactly the case here, since the
+  // URL never changes. cache:'no-store' (+ an explicit no-cache request header, for
+  // browsers that still try to revalidate against a cached copy) forces a real network
+  // round-trip every time, so a pull always sees what another device just pushed.
   var res = await fetch(GH_API_URL + '?ref=' + GH_BRANCH, {
-    headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken }
+    cache: 'no-store',
+    headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + ghToken, 'Cache-Control': 'no-cache' }
   });
   if(res.status === 404) return { exists: false };
   if(!res.ok){
